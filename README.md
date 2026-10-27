@@ -2,6 +2,8 @@
 
 零构建、零依赖的纯静态盲打练习网站。双击 `index.html` 即可使用，也可用内置小服务器在局域网里用手机练。
 
+**线上地址：https://no-belief.github.io/touch-typing/** （GitHub Pages，已验证 8/8 静态资源与本地字节一致）
+
 ---
 
 ## 1. 关键信息确认结果

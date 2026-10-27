@@ -1,75 +1,64 @@
-# 部署交接单（GitHub Pages）
+# 部署记录（GitHub Pages）
 
-## 现在的状态
+## 线上地址
 
-| 项 | 状态 |
+**https://no-belief.github.io/touch-typing/**
+
+| 项 | 结果 |
 |---|---|
-| 站点代码 | 完成，`node tools/selftest.mjs` 93 条断言全绿 |
-| 本机链接 | **可用** http://127.0.0.1:5173/ |
-| 局域网链接 | **可用** http://10.2.180.167:5173/ |
-| 本地 git 仓库 | **已建好**，分支 `main`，首次提交 `ffdb50f`，工作区干净 |
-| 公网链接 | **待你执行最后一步 push** |
+| Pages 来源 | 仓库 Settings → Pages → Deploy from a branch → `main` / `(root)` |
+| 上线 commit | `6b91419`（后续任何 push 到 main 都会自动重新部署） |
+| 首页 | HTTP 200，title = `盲打训练 · 从基准键位到符号` |
+| 静态资源 | 8/8 与本地**字节一致**（`node tools/verify-live.mjs`，一致=8 不一致=0） |
+| 关键 DOM | `#typebuffer`、`#keyboard-practice` 均存在于线上 HTML |
 
-## 为什么最后一步必须你来做
+## 这次踩到的三个坑（下次直接用结论）
 
-本会话的进程拿不到系统 TLS 凭据，任何出网 HTTPS 都失败；SSH 端口虽通，但本机两个密钥都没注册到你的 GitHub。实测：
+1. **本会话 shell 的出网 HTTPS 被系统 TLS 凭据限制封死**
+   `Invoke-WebRequest` / `curl.exe` / `git https` 全部失败：
+   `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS (0x8009030e)`。
+   TCP 443 能连上，说明不是断网，是凭据被禁。
 
-```
-git ls-remote https://github.com/git/git.git
-  fatal: unable to access ...: schannel: AcquireCredentialsHandle failed:
-  SEC_E_NO_CREDENTIALS (0x8009030e)
-ssh -i id_ed25519 -T git@github.com   -> Permission denied (publickey)
-ssh -i id_rsa     -T git@github.com   -> Permission denied (publickey)
-```
+2. **Node 的 TLS 不受影响**（自带 CA + OpenSSL，不走 schannel），所以公网页面可以用
+   `node` + `fetch` 自己验证，不需要人工截图。
 
-## 三步拿到公网链接
+3. **git 用 SSH 推送会被沙箱管道限制挡住**
+   git 自带的 msys `ssh.exe` / `sh.exe` 报 `couldn't create signal pipe, Win32 error 5`。
+   解法是让它改用 Windows 原生 OpenSSH，绕开 shell 包装：
+   ```powershell
+   $env:GIT_SSH = 'C:\Windows\System32\OpenSSH\ssh.exe'
+   $env:GIT_SSH_VARIANT = 'ssh'
+   git push origin main
+   ```
 
-### 第 1 步：建一个空仓库（浏览器，30 秒）
-打开 https://github.com/new
-- Repository name: `touch-typing`
-- **Public**（免费账号的 Pages 需要公开仓库）
-- **不要**勾选 Add a README / .gitignore / license（勾了会导致推送冲突）
+4. **CI 自动开启 Pages 不可行**
+   `actions/configure-pages@v5` 的 `enablement: true` 用 `GITHUB_TOKEN` 会在
+   "Enable Pages automatically" 这一步失败（开启 Pages 需要管理员权限）。
+   该 workflow 已移除；改用「分支直发 + 一次性 PAT 调 `POST /repos/{owner}/{repo}/pages`」才成功。
 
-### 第 2 步：推代码（在你自己的 PowerShell 里，不是 DSH 里）
+## 以后怎么更新站点
 
-方式一，用本目录已备好的脚本：
 ```powershell
 cd "C:\Users\yfd\Desktop\盲打训练"
-.\deploy-github.ps1 -Repo 你的账号/touch-typing
+# 改完文件后
+$env:GIT_SSH = 'C:\Windows\System32\OpenSSH\ssh.exe'
+git add -A
+git commit -m "update"
+git push origin main
+node tools/verify-live.mjs      # 30-60 秒后逐字节比对线上与本地
 ```
 
-方式二，手敲三条：
-```powershell
-cd "C:\Users\yfd\Desktop\盲打训练"
-git remote add origin https://github.com/你的账号/touch-typing.git
-git push -u origin main
-```
+## 安全事项
 
-首次推送会弹出 GitHub 登录窗口（Git Credential Manager），浏览器授权一次即可。
+- 启用 Pages 时用过一次性 Fine-grained PAT（权限只有 **Pages: Read and write**、范围仅本仓库、7 天有效）。
+- 它写进过本地 `.token`（已在 `.gitignore` 内），**验证完已删除**；`git log --all -S 'github_pat_'` 为空，
+  从未进入任何提交。
+- **请到 https://github.com/settings/tokens 手动 Revoke 这个 token**（Fine-grained PAT 无法通过 API 撤销）。
+- 仓库内不含任何密钥。
 
-### 第 3 步：开启 Pages（一次性）
-打开 `https://github.com/你的账号/touch-typing/settings/pages`
-- Source: **Deploy from a branch**
-- Branch: **main** / 目录 **/(root)** → **Save**
+## 本地备用入口
 
-约 1 分钟后访问：
-
-```
-https://你的账号.github.io/touch-typing/
-```
-
-## 想要更短的地址
-
-把仓库名改成 `你的账号.github.io` 再推送，地址就是 `https://你的账号.github.io/`（一个账号只能有一个这样的仓库）。
-
-## 另一个可选路径（想让我直接推）
-
-本机 SSH 端口到 GitHub 是通的，只是密钥没被授权。你若愿意：
-1. 把 `%USERPROFILE%\.ssh\id_ed25519.pub` 的内容加到 https://github.com/settings/keys
-2. 建好空仓库后把 `账号/仓库名` 告诉我
-
-我就能在本会话里直接完成 push（注意：该密钥会因此获得你账号的仓库写权限，这是它的作用范围）。
-
-## 上线后必须确认的一条
-
-打开公网地址，**按一下键盘看有没有字符被判定**——验收标准就是"打开即可练习、能准确判对错"。站内一切路径都是相对路径，放在 `/仓库名/` 子路径下也能正常工作（已核查 index.html 无任何绝对路径引用）。
+- 双击 `start.cmd` → http://127.0.0.1:5173/
+- 局域网（同 WiFi 手机）：http://10.2.180.167:5173/
+  —— 若手机打不开，管理员 PowerShell 执行一次：
+  `New-NetFirewallRule -DisplayName "TouchTyping 5173" -Direction Inbound -Protocol TCP -LocalPort 5173 -Action Allow`
