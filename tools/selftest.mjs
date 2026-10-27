@@ -28,6 +28,7 @@ const ctx = vm.createContext({ window: windowStub, console, Math, Date, JSON });
 const FILES = [
   'assets/js/courses.js',
   'assets/js/pinyin.js',
+  'assets/js/tutorial.js',
   'assets/js/keyboard.js',
   'assets/js/engine.js',
   'assets/js/storage.js'
@@ -160,7 +161,7 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
 // ---- 8. 静态检查：产物完整、可直接 file:// 打开 ----
 {
   const html = read('index.html');
-  const order = ['courses', 'pinyin', 'keyboard', 'engine', 'storage', 'chart', 'app'];
+  const order = ['courses', 'pinyin', 'tutorial', 'keyboard', 'engine', 'storage', 'chart', 'app'];
   let last = -1;
   for (const name of order) {
     const at = html.indexOf('assets/js/' + name + '.js');
@@ -223,7 +224,8 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
   ok('拼音模块已注册', !!(P && P.POOLS && typeof P.build === 'function'));
 
   const ids = Object.keys(P.POOLS);
-  eq('四个词池', ids.length, 4, ids.join(','));
+  ok('四个基础词池齐备', ['pq', 'nq', 'nb', 'cy'].every((x) => !!P.POOLS[x]), ids.join(','));
+  eq('课程池仍为 4 个', P.POOL_ORDER.length, 4, P.POOL_ORDER.join(','));
 
   const CJK = /^[\u4e00-\u9fa5]+$/;
   const PY = /^[a-z]+$/;
@@ -283,6 +285,75 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
   const p = TT.Pinyin.build('cy', 'pinyin');
   ok('拼音词边界首字符正确', p.words.every((w) => p.target.charAt(w.start) === w.pinyin.charAt(0)));
   ok('拼音词边界末字符正确', p.words.every((w) => p.target.charAt(w.end - 1) === w.pinyin.charAt(w.pinyin.length - 1)));
+}
+
+// ---- 12. 30 天教程：数据、文本可打性、与课程体系隔离 ----
+{
+  const T = TT.Tutorial;
+  ok('教程模块已注册', !!(T && Array.isArray(T.EN) && Array.isArray(T.PY)));
+
+  for (const track of ['EN', 'PY']) {
+    const days = T[track];
+    eq(track + ' 模块 30 天', days.length, 30, String(days.length));
+    const dayNums = days.map((d) => d.day).join(',');
+    eq(track + ' 天数连续 1-30', dayNums, Array.from({ length: 30 }, (_, i) => i + 1).join(','));
+    ok(track + ' 每周标题齐备', [1, 2, 3, 4, 5].every((w) => !!T.WEEK_TITLES[track === 'EN' ? 'en' : 'py'][w]));
+
+    const bad = [];
+    for (const d of days) {
+      if (!d.id || !d.name || !d.focus) bad.push(d.id + ' 字段缺失');
+      if (!(d.target > 0)) bad.push(d.id + ' 目标非法');
+      if (!(d.minutes > 0)) bad.push(d.id + ' 时长非法');
+      if (d.week !== (d.day <= 7 ? 1 : d.day <= 14 ? 2 : d.day <= 21 ? 3 : d.day <= 28 ? 4 : 5)) {
+        bad.push(d.id + ' 周次错');
+      }
+    }
+    eq(track + ' 每天字段完整', bad.length, 0, bad.slice(0, 4).join(' | '));
+  }
+
+  const allIds = T.EN.concat(T.PY).map((d) => d.id);
+  eq('教程 id 唯一', new Set(allIds).size, 60, 'uniq=' + new Set(allIds).size);
+  const courseIds = new Set(COURSES.map((c) => c.id));
+  eq('教程 id 与课程 id 不冲突', allIds.filter((x) => courseIds.has(x)).length, 0);
+  eq('教程不混入课程列表', COURSES.filter((c) => c.track).length, 0);
+
+  const badText = [];
+  for (const d of T.EN) {
+    for (let k = 0; k < 6; k += 1) {
+      const text = d.build();
+      if (typeof text !== 'string' || text.length < 20) badText.push(d.id + ' 文本过短 ' + (text || '').length);
+      for (const ch of String(text)) {
+        if (!Keyboard.resolve(ch)) badText.push(d.id + ' 无法解析 ' + JSON.stringify(ch));
+      }
+    }
+  }
+  eq('英文教程 30 天的文本都能逐键敲出', badText.length, 0, [...new Set(badText)].slice(0, 4).join(' | '));
+
+  const badPy = [];
+  for (const d of T.PY) {
+    for (let k = 0; k < 6; k += 1) {
+      const built = TT.Pinyin.build(d.pool, d.mode, d.py);
+      if (!built.target || built.words.length === 0) badPy.push(d.id + ' 空文本');
+      for (const w of built.words) {
+        const slice = built.target.slice(w.start, w.end);
+        const want = built.mode === 'pinyin' ? w.pinyin : w.hanzi;
+        if (slice !== want) badPy.push(d.id + ' 边界错');
+      }
+      if (built.mode === 'pinyin') {
+        if (!/^[a-z ]+$/.test(built.target)) badPy.push(d.id + ' 非法字符');
+        for (const ch of built.target) if (!Keyboard.resolve(ch)) badPy.push(d.id + ' 无法解析');
+      }
+      const e = new Engine(built.target);
+      for (const ch of built.target) e.push(ch);
+      if (!e.finished || e.result().acc !== 100) badPy.push(d.id + ' 无法敲完');
+    }
+  }
+  eq('拼音教程 30 天的文本与判定自洽', badPy.length, 0, [...new Set(badPy)].slice(0, 4).join(' | '));
+
+  eq('打汉字的日子用字/分计速', T.unitOf(T.PY.find((d) => d.mode === 'hanzi')), '字/分');
+  eq('打拼音的日子用 WPM 计速', T.unitOf(T.PY.find((d) => d.mode === 'pinyin')), 'WPM');
+  eq('英文模块按 WPM 计速', T.unitOf(T.EN[0]), 'WPM');
+  ok('教程有按天取用的入口', typeof T.get('t-en-01') === 'object' && T.get('t-py-30') === T.PY[29]);
 }
 
 console.log('');

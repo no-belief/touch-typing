@@ -113,5 +113,8 @@
   ];
 
   TT.COURSES = COURSES;
-  TT.CourseUtils = { drill: drill, words: words, sentences: sentences, PUNCT: PUNCT, SYMBOLS: SYMBOLS };
+  TT.CourseUtils = {
+    drill: drill, words: words, sentences: sentences,
+    PUNCT: PUNCT, SYMBOLS: SYMBOLS, WORDS: WORDS, SENTENCES: SENTENCES
+  };
 })();

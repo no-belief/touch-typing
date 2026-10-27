@@ -53,6 +53,17 @@
         ['留连', 'liulian'], ['泥鳅', 'niqiu']
       ]
     },
+    dy: {
+      name: '常用单字',
+      desc: '单音节起步，先把手感建立起来',
+      items: [
+        ['我', 'wo'], ['你', 'ni'], ['他', 'ta'], ['的', 'de'],
+        ['是', 'shi'], ['不', 'bu'], ['了', 'le'], ['人', 'ren'],
+        ['在', 'zai'], ['有', 'you'], ['中', 'zhong'], ['大', 'da'],
+        ['小', 'xiao'], ['上', 'shang'], ['下', 'xia'], ['好', 'hao'],
+        ['来', 'lai'], ['去', 'qu'], ['说', 'shuo'], ['看', 'kan']
+      ]
+    },
     cy: {
       name: '常用词',
       desc: '高频常用词，练整体节奏',
@@ -87,12 +98,42 @@
     return a;
   }
 
-  // mode: 'pinyin' 打拼音字母（词间空格）| 'hanzi' 用中文输入法上屏汉字
-  function build(poolId, mode, count) {
+  // options: { count, idx:[索引], mix:[多个池], repeat:true }
+  function resolveItems(poolId, o) {
     var pool = POOLS[poolId] || POOLS.cy;
+    var items = pool.items;
+    if (o.mix && o.mix.length) {
+      items = [];
+      for (var i = 0; i < o.mix.length; i++) {
+        var p = POOLS[o.mix[i]];
+        if (p) items = items.concat(p.items);
+      }
+    } else if (o.idx && o.idx.length) {
+      items = [];
+      for (var j = 0; j < o.idx.length; j++) {
+        var it = pool.items[o.idx[j]];
+        if (it) items.push(it);
+      }
+    }
+    return { items: items, pool: pool };
+  }
+
+  // mode: 'pinyin' 打拼音字母（词间空格）| 'hanzi' 用中文输入法上屏汉字
+  function build(poolId, mode, options) {
+    var o = options || {};
+    if (typeof o === 'number') o = { count: o };
+    var resolved = resolveItems(poolId, o);
+    var pool = resolved.pool;
+    var items = resolved.items;
     var m = mode === 'hanzi' ? 'hanzi' : 'pinyin';
-    var n = count || DEFAULT_COUNT;
-    var picked = shuffle(pool.items).slice(0, Math.min(n, pool.items.length));
+    var n = o.count || DEFAULT_COUNT;
+
+    var picked = [];
+    if (o.repeat || items.length <= n) {
+      for (var q = 0; q < n; q++) picked.push(items[Math.floor(Math.random() * items.length)]);
+    } else {
+      picked = shuffle(items).slice(0, n);
+    }
 
     var target = '';
     var words = [];
@@ -118,6 +159,7 @@
     POOLS: POOLS,
     POOL_ORDER: POOL_ORDER,
     build: build,
+    resolveItems: resolveItems,
     shuffle: shuffle
   };
 

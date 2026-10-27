@@ -6,6 +6,7 @@
   for (var i = 0; i < COURSES.length; i++) byId[COURSES[i].id] = COURSES[i];
 
   var S = {
+    course: null,
     courseId: COURSES[0].id,
     engine: null,
     spans: [],
@@ -49,6 +50,13 @@
     el.chartFilter = $('chart-filter');
     el.chartNote = $('chart-note');
     el.runsBody = $('runs-tbody');
+    el.tutTracks = $('tut-tracks');
+    el.tutProgressText = $('tut-progress-text');
+    el.tutBar = $('tut-bar');
+    el.tutLead = $('tut-lead');
+    el.tutWeeks = $('tut-weeks');
+    el.tutNextText = $('tut-next-text');
+    el.tutContinue = $('tut-continue');
 
     TT.Keyboard.render(el.kbPractice);
     TT.Keyboard.render(el.kbGuide);
@@ -60,6 +68,7 @@
     switchView('practice');
     startLesson(S.courseId, true);
     renderStats();
+    renderTutorial();
   }
 
   /* ---------------- courses ---------------- */
@@ -116,14 +125,18 @@
 
   /* ---------------- lesson lifecycle ---------------- */
   function startLesson(id, silent) {
-    var c = byId[id] || COURSES[0];
+    beginLesson(byId[id] || COURSES[0], silent);
+  }
+
+  function beginLesson(c, silent) {
+    S.course = c;
     S.courseId = c.id;
     stopTimer();
-    S.built = c.kind === 'pinyin' ? TT.Pinyin.build(c.pool, c.mode) : null;
+    S.built = c.kind === 'pinyin' ? TT.Pinyin.build(c.pool, c.mode, c.py) : null;
     S.mode = S.built ? S.built.mode : 'letter';
     S.engine = new TT.Engine(S.built ? S.built.target : c.build());
     S.current = null;
-    el.lessonName.textContent = c.name;
+    el.lessonName.textContent = c.track ? '教程 · 第 ' + c.day + ' 天 · ' + c.name : c.name;
     el.lessonHint.textContent = c.hint;
     var unitWord = S.mode === 'hanzi' ? '字/分' : 'WPM';
     el.speedLabel.textContent = '速度 ' + unitWord;
@@ -133,7 +146,7 @@
     renderText();
     updateHUD();
     TT.Keyboard.highlight(el.kbPractice, S.engine.text.charAt(0));
-    markActiveCourse();
+    if (!c.track) markActiveCourse();
     if (!silent) focusBuffer();
   }
 
@@ -264,18 +277,30 @@
     return COURSES[(idx + 1) % COURSES.length].id;
   }
 
+  function nextLesson() {
+    var c = S.course;
+    if (c && c.track && TT.Tutorial) {
+      var list = TT.Tutorial.list(c.track);
+      var idx = 0;
+      for (var i = 0; i < list.length; i++) if (list[i].id === c.id) idx = i;
+      beginLesson(list[(idx + 1) % list.length]);
+      return;
+    }
+    nextLesson();
+  }
+
   function onKeyDown(e) {
     if (S.composing || e.isComposing || e.keyCode === 229) return;
     if (S.view !== 'practice') return;
     if (!el.modal.hidden) {
-      if (e.key === 'Enter') { e.preventDefault(); hideModal(); startLesson(nextCourseId()); }
+      if (e.key === 'Enter') { e.preventDefault(); hideModal(); nextLesson(); }
       else if (e.key === 'Escape') { e.preventDefault(); hideModal(); }
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'Backspace') { e.preventDefault(); handleBackspace(); return; }
-    if (e.key === 'Escape') { e.preventDefault(); startLesson(S.courseId); return; }
-    if (e.key === 'Enter') { e.preventDefault(); startLesson(nextCourseId()); return; }
+    if (e.key === 'Escape') { e.preventDefault(); beginLesson(S.course); return; }
+    if (e.key === 'Enter') { e.preventDefault(); nextLesson(); return; }
     if (e.key === 'Tab') { e.preventDefault(); return; }
     if (e.key === ' ') { e.preventDefault(); S.suppressInputUntil = Date.now() + 40; handleChar(' '); return; }
     if (e.key.length === 1) {
@@ -311,10 +336,10 @@
   function finishRun() {
     stopTimer();
     updateHUD();
-    var c = byId[S.courseId];
+    var c = S.course || byId[S.courseId] || COURSES[0];
     var r = S.engine.result();
     r.courseId = c.id;
-    r.courseName = c.name;
+    r.courseName = c.track ? ('教程 第' + c.day + '天 ' + c.name) : c.name;
     r.target = c.target;
     r.unit = c.kind === 'pinyin' && c.mode === 'hanzi' ? 'cpm' : 'wpm';
     if (r.unit === 'cpm') {
@@ -325,6 +350,7 @@
     showResult(r, c);
     renderCourses();
     renderStats();
+    if (TT.Tutorial) renderTutorial();
   }
 
   function cell(label, value, tone) {
@@ -382,6 +408,10 @@
       o.textContent = c.name;
       el.chartFilter.appendChild(o);
     });
+    var optTut = document.createElement('option');
+    optTut.value = 'tutorial';
+    optTut.textContent = '教程练习';
+    el.chartFilter.appendChild(optTut);
     el.chartFilter.value = prev || 'all';
   }
 
@@ -408,7 +438,10 @@
 
     var all = TT.Storage.all().slice().reverse();
     var filter = el.chartFilter.value || 'all';
-    var rows = all.filter(function (r) { return filter === 'all' || r.courseId === filter; });
+    var rows = all.filter(function (r) {
+      if (filter === 'tutorial') return String(r.courseId).indexOf('t-') === 0;
+      return filter === 'all' || r.courseId === filter;
+    });
     TT.Chart.draw(el.canvas, rows.slice(-20));
 
     var unitTip = '速度单位：拼音·打汉字为「字/分」，其余课程为 WPM（每 5 个字符计一词）。';
@@ -446,6 +479,95 @@
       });
       el.runsBody.appendChild(tr);
     });
+  }
+
+  /* ---------------- tutorial view ---------------- */
+  var TUT = { track: 'en', next: null };
+
+  function tutBest() {
+    var map = {};
+    TT.Storage.all().forEach(function (r) {
+      if (String(r.courseId).indexOf('t-') !== 0) return;
+      if (!map[r.courseId] || r.wpm > map[r.courseId].wpm) map[r.courseId] = r;
+    });
+    return map;
+  }
+
+  function renderTutorial() {
+    if (!TT.Tutorial) return;
+    var days = TT.Tutorial.list(TUT.track);
+    var best = tutBest();
+    var doneCount = 0;
+    var next = null;
+    days.forEach(function (d) {
+      var rec = best[d.id];
+      var done = rec && rec.wpm >= d.target;
+      if (done) doneCount += 1;
+      if (!done && !next) next = d;
+    });
+
+    el.tutProgressText.textContent = '已完成 ' + doneCount + ' / ' + days.length + ' 天';
+    el.tutBar.style.width = (days.length ? (doneCount / days.length) * 100 : 0).toFixed(1) + '%';
+    el.tutLead.textContent = TT.Tutorial.LEADS[TUT.track] || '';
+    el.tutNextText.textContent = next
+      ? ('下一步：第 ' + next.day + ' 天 · ' + next.name)
+      : '全部完成，可以再刷一遍冲纪录';
+    el.tutContinue.textContent = next ? ('继续第 ' + next.day + ' 天') : '重新练第 1 天';
+    TUT.next = next || days[0];
+
+    var tracks = el.tutTracks.querySelectorAll('.tut-track');
+    for (var i = 0; i < tracks.length; i++) {
+      var on = tracks[i].getAttribute('data-track') === TUT.track;
+      tracks[i].classList.toggle('is-active', on);
+      tracks[i].setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+
+    var frag = document.createDocumentFragment();
+    var week = null;
+    var weekBox = null;
+    days.forEach(function (d) {
+      if (d.week !== week) {
+        week = d.week;
+        weekBox = document.createElement('div');
+        weekBox.className = 'tut-week';
+        var h = document.createElement('div');
+        h.className = 'tut-week-name';
+        h.textContent = (TT.Tutorial.WEEK_TITLES[TUT.track] || {})[week] || ('第 ' + week + ' 周');
+        weekBox.appendChild(h);
+        frag.appendChild(weekBox);
+      }
+      var rec = best[d.id];
+      var done = !!(rec && rec.wpm >= d.target);
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'tut-day' + (done ? ' is-done' : '') + (next && next.id === d.id ? ' is-next' : '');
+      card.setAttribute('data-day', d.id);
+
+      var no = document.createElement('span');
+      no.className = 'tut-day-no';
+      no.textContent = '第 ' + d.day + ' 天';
+      var nm = document.createElement('span');
+      nm.className = 'tut-day-name';
+      nm.textContent = d.name;
+      var fc = document.createElement('span');
+      fc.className = 'tut-day-focus';
+      fc.textContent = d.focus;
+      var mt = document.createElement('span');
+      mt.className = 'tut-day-meta';
+      mt.textContent = '目标 ' + d.target + ' ' + TT.Tutorial.unitOf(d) + ' · 约 ' + d.minutes + ' 分钟';
+      var st = document.createElement('span');
+      st.className = 'tut-day-state';
+      st.textContent = done ? ('✓ ' + rec.wpm) : (rec ? ('最好 ' + rec.wpm) : '未开始');
+
+      card.appendChild(no);
+      card.appendChild(nm);
+      card.appendChild(fc);
+      card.appendChild(mt);
+      card.appendChild(st);
+      weekBox.appendChild(card);
+    });
+    el.tutWeeks.textContent = '';
+    el.tutWeeks.appendChild(frag);
   }
 
   /* ---------------- guide view ---------------- */
@@ -501,6 +623,7 @@
       tabs[j].setAttribute('aria-selected', on ? 'true' : 'false');
     }
     if (name === 'stats') renderStats();
+    if (name === 'tutorial') renderTutorial();
     if (name === 'guide') window.setTimeout(function () { TT.Chart.draw(el.canvas, TT.Storage.all().slice(-20)); }, 0);
   }
 
@@ -515,10 +638,10 @@
       if (b) startLesson(b.getAttribute('data-course'));
     });
 
-    $('btn-restart').addEventListener('click', function () { startLesson(S.courseId); });
-    $('btn-next').addEventListener('click', function () { startLesson(nextCourseId()); });
-    $('modal-retry').addEventListener('click', function () { hideModal(); startLesson(S.courseId); });
-    $('modal-next').addEventListener('click', function () { hideModal(); startLesson(nextCourseId()); });
+    $('btn-restart').addEventListener('click', function () { beginLesson(S.course); });
+    $('btn-next').addEventListener('click', function () { nextLesson(); });
+    $('modal-retry').addEventListener('click', function () { hideModal(); beginLesson(S.course); });
+    $('modal-next').addEventListener('click', function () { hideModal(); nextLesson(); });
     $('modal-stats').addEventListener('click', function () { hideModal(); switchView('stats'); });
     el.modal.addEventListener('click', function (e) { if (e.target === el.modal) hideModal(); });
 
@@ -540,6 +663,27 @@
       onBufferInput();
     });
     el.zone.addEventListener('click', focusBuffer);
+
+    el.tutTracks.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.tut-track') : null;
+      if (!b) return;
+      TUT.track = b.getAttribute('data-track');
+      renderTutorial();
+    });
+    el.tutWeeks.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.tut-day') : null;
+      if (!b) return;
+      var day = TT.Tutorial.get(b.getAttribute('data-day'));
+      if (!day) return;
+      switchView('practice');
+      beginLesson(day);
+    });
+    el.tutContinue.addEventListener('click', function () {
+      var day = TUT.next || TT.Tutorial.list(TUT.track)[0];
+      if (!day) return;
+      switchView('practice');
+      beginLesson(day);
+    });
 
     var rt = null;
     window.addEventListener('resize', function () {

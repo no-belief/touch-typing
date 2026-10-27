@@ -16,6 +16,7 @@
   </div>
   <nav class="tabs" role="tablist" aria-label="主导航">
     <button class="tab is-active" type="button" role="tab" aria-selected="true" data-view="practice">练习</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-view="tutorial">教程</button>
     <button class="tab" type="button" role="tab" aria-selected="false" data-view="stats">成绩</button>
     <button class="tab" type="button" role="tab" aria-selected="false" data-view="guide">指法</button>
   </nav>
@@ -58,6 +59,28 @@
 
         <div class="keyboard-wrap" id="keyboard-practice" aria-label="键盘指法提示"></div>
       </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-tutorial" role="tabpanel" aria-label="教程">
+    <h2 class="panel-title">30 天学会盲打</h2>
+    <div class="panel">
+      <div class="tut-top">
+        <div class="tut-tracks" id="tut-tracks" role="tablist" aria-label="模块">
+          <button class="tut-track is-active" type="button" role="tab" aria-selected="true" data-track="en">英文模块</button>
+          <button class="tut-track" type="button" role="tab" aria-selected="false" data-track="py">拼音模块</button>
+        </div>
+        <button class="btn btn-primary" type="button" id="tut-continue">继续训练</button>
+      </div>
+      <div class="tut-progress">
+        <div class="tut-progress-row">
+          <span id="tut-progress-text">已完成 0 / 30 天</span>
+          <span id="tut-next-text"></span>
+        </div>
+        <div class="bar"><i id="tut-bar"></i></div>
+      </div>
+      <p class="tut-lead" id="tut-lead"></p>
+      <div class="tut-weeks" id="tut-weeks"></div>
     </div>
   </section>
 
@@ -125,6 +148,7 @@
 
 <script src="assets/js/courses.js"></script>
 <script src="assets/js/pinyin.js"></script>
+<script src="assets/js/tutorial.js"></script>
 <script src="assets/js/keyboard.js"></script>
 <script src="assets/js/engine.js"></script>
 <script src="assets/js/storage.js"></script>
