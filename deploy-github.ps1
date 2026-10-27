@@ -1,11 +1,12 @@
 <#
-  一键推到 GitHub 并给出 Pages 地址。
-  用法（在资源管理器中右键「使用 PowerShell 运行」等价于在本目录执行）：
+  一键推到 GitHub（自动在 SSH / HTTPS 之间选择），并给出 Pages 地址。
 
+  用法：
     .\deploy-github.ps1 -Repo 你的账号/仓库名
+  例：
+    .\deploy-github.ps1 -Repo yifan/touch-typing
 
-  例：.\deploy-github.ps1 -Repo yifan/touch-typing
-  前置：仓库必须已在 github.com 上创建（空仓库，不要勾 README/gitignore/license）。
+  前置：仓库已在 github.com 创建（空仓库，Public，不勾 README/gitignore/license）。
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Repo,
@@ -22,26 +23,33 @@ $user = $Repo.Split('/')[0]
 $name = $Repo.Split('/')[1]
 
 Write-Host "==> 检查工作区" -ForegroundColor Cyan
-$dirty = git status --porcelain
-if ($dirty) {
-  Write-Host "==> 有未提交改动，先提交" -ForegroundColor Cyan
+if (git status --porcelain) {
   git add -A
-  git commit -m "chore: update before deploy"
+  git commit -m "chore: update before deploy" | Out-Null
+  Write-Host "    已提交未入库改动" -ForegroundColor Cyan
 }
 
-Write-Host "==> 配置远端 $Remote -> https://github.com/$Repo.git" -ForegroundColor Cyan
-$existing = git remote
-if ($existing -contains $Remote) { git remote remove $Remote }
-git remote add $Remote "https://github.com/$Repo.git"
+# SSH 22 到 GitHub 通常可用；密钥已注册则优先用 SSH，避免 HTTPS 凭据问题
+$sshProbe = (ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | Out-String)
+if ($sshProbe -match 'successfully authenticated') {
+  $url = "git@github.com:$Repo.git"
+  Write-Host "==> 走 SSH（$url）" -ForegroundColor Cyan
+} else {
+  $url = "https://github.com/$Repo.git"
+  Write-Host "==> SSH 密钥未授权，退回 HTTPS（首次推送会弹 GitHub 登录窗口）" -ForegroundColor Yellow
+}
 
-Write-Host "==> 推送 main（首次会弹出 GitHub 登录窗口，用浏览器授权即可）" -ForegroundColor Cyan
+if ((git remote) -contains $Remote) { git remote remove $Remote }
+git remote add $Remote $url
+
+Write-Host "==> 推送 main" -ForegroundColor Cyan
 git push -u $Remote main
 
+Write-Host "==> 确认远端已收到" -ForegroundColor Cyan
+git ls-remote --heads $Remote main
+
 Write-Host ""
-Write-Host "推送完成。还需一次性开启 Pages：" -ForegroundColor Green
-Write-Host "  1) 打开下面的页面"
-Write-Host "  2) Source 选 'Deploy from a branch'"
-Write-Host "  3) Branch 选 main，目录选 /(root)，点 Save"
-Write-Host "  4) 等 1 分钟左右，访问 https://$user.github.io/$name/"
-Write-Host ""
-Start-Process "https://github.com/$Repo/settings/pages"
+Write-Host "推送完成。仓库里的 CI workflow 会自动开启 Pages 并部署，通常 1-2 分钟。" -ForegroundColor Green
+Write-Host "届时访问： https://$user.github.io/$name/" -ForegroundColor Green
+Write-Host "进度： https://github.com/$Repo/actions" -ForegroundColor Gray
+Start-Process "https://github.com/$Repo/actions"
