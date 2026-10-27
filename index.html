@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<meta name="description" content="盲打训练：逐级课程、实时 WPM 与准确率、错误高亮、历史成绩图表、键盘指法示意。" />
+<title>盲打训练 · 从基准键位到符号</title>
+<link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">&#9000;</span>
+    <span class="brand-text"><b>盲打训练</b><small>Touch Typing Trainer</small></span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="主导航">
+    <button class="tab is-active" type="button" role="tab" aria-selected="true" data-view="practice">练习</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-view="stats">成绩</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-view="guide">指法</button>
+  </nav>
+</header>
+
+<main class="shell">
+  <section class="view is-active" id="view-practice" role="tabpanel" aria-label="练习">
+    <div class="practice-grid">
+      <aside class="panel lessons">
+        <h2 class="panel-title">逐级课程</h2>
+        <div class="course-groups" id="course-groups"></div>
+      </aside>
+
+      <div class="stage">
+        <div class="hud" aria-label="实时数据">
+          <div class="hud-cell"><span>速度 WPM</span><b id="hud-wpm">0</b></div>
+          <div class="hud-cell"><span>准确率</span><b id="hud-acc">100%</b></div>
+          <div class="hud-cell"><span>用时</span><b id="hud-time">0.0s</b></div>
+          <div class="hud-cell"><span>进度</span><b id="hud-progress">0%</b></div>
+        </div>
+        <div class="bar"><i id="bar-fill"></i></div>
+
+        <div class="typing-zone" id="typing-zone">
+          <div class="typing-meta">
+            <span class="lesson-name" id="lesson-name">-</span>
+            <span class="lesson-hint" id="lesson-hint">-</span>
+          </div>
+          <div class="text-display" id="text-display" aria-label="练习文本"></div>
+          <p class="focus-hint" id="focus-hint">点击此处或直接开始敲键盘</p>
+          <textarea class="typebuffer" id="typebuffer" aria-label="输入缓冲区" autocomplete="off"
+            autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text"></textarea>
+        </div>
+
+        <div class="stage-actions">
+          <button class="btn" type="button" id="btn-restart">重练本课 <kbd>Esc</kbd></button>
+          <button class="btn btn-ghost" type="button" id="btn-next">下一课 <kbd>Enter</kbd></button>
+          <span class="target" id="target-text">目标 15 WPM</span>
+        </div>
+
+        <div class="keyboard-wrap" id="keyboard-practice" aria-label="键盘指法提示"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-stats" role="tabpanel" aria-label="成绩">
+    <h2 class="panel-title">成绩统计</h2>
+    <div class="stat-cards" id="stat-cards"></div>
+    <div class="panel">
+      <div class="panel-head">
+        <h3>历史记录</h3>
+        <label class="select-wrap">课程
+          <select id="chart-filter"></select>
+        </label>
+      </div>
+      <div class="chart-box"><canvas id="history-chart" height="260"></canvas></div>
+      <p class="chart-note" id="chart-note"></p>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h3>最近记录</h3>
+        <button class="btn btn-danger btn-sm" type="button" id="btn-clear">清空历史</button>
+      </div>
+      <div class="table-box">
+        <table class="runs-table">
+          <thead><tr><th>时间</th><th>课程</th><th>WPM</th><th>准确率</th><th>用时</th></tr></thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-guide" role="tabpanel" aria-label="指法">
+    <h2 class="panel-title">键盘指法示意</h2>
+    <div class="panel">
+      <p class="guide-lead">
+        手指始终回到基准键位 <b>A S D F</b> / <b>J K L ;</b>，敲完任意键立即归位。
+        <b>F</b> 与 <b>J</b> 上有凸点，用来盲找基准位置。需要 Shift 时用<b>对侧</b> Shift：左手敲字母时按右 Shift。
+      </p>
+      <div class="keyboard-wrap" id="keyboard-guide" aria-label="指法示意图"></div>
+      <div class="legend" id="finger-legend"></div>
+    </div>
+    <div class="panel">
+      <h3>手指分工</h3>
+      <div class="table-box">
+        <table class="finger-table">
+          <thead><tr><th>手指</th><th>负责按键</th></tr></thead>
+          <tbody id="finger-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="result-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">本课完成</h3>
+    <p class="modal-sub" id="modal-sub"></p>
+    <div class="result-grid" id="result-grid"></div>
+    <div class="modal-actions">
+      <button class="btn" type="button" id="modal-retry">重练本课</button>
+      <button class="btn btn-primary" type="button" id="modal-next">下一课</button>
+      <button class="btn btn-ghost" type="button" id="modal-stats">查看成绩</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/courses.js"></script>
+<script src="assets/js/keyboard.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/storage.js"></script>
+<script src="assets/js/chart.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
