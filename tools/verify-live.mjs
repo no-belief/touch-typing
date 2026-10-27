@@ -6,6 +6,7 @@ const FILES = [
   'index.html',
   'assets/styles.css',
   'assets/js/courses.js',
+  'assets/js/pinyin.js',
   'assets/js/keyboard.js',
   'assets/js/engine.js',
   'assets/js/storage.js',
