@@ -31,7 +31,8 @@ const ok = (name, cond, extra) => { if (cond) pass += 1; else fails.push(name + 
 
 ok('线上 courses.js 加载成功', Array.isArray(COURSES) && COURSES.length === 20, 'len=' + (COURSES && COURSES.length));
 ok('线上 pinyin.js 加载成功', !!(Pinyin && Pinyin.POOLS));
-ok('四个词池', Object.keys(Pinyin.POOLS).length === 4, Object.keys(Pinyin.POOLS).join(','));
+ok('四个基础词池齐备', ['pq', 'nq', 'nb', 'cy'].every((x) => !!Pinyin.POOLS[x]), Object.keys(Pinyin.POOLS).join(','));
+ok('课程池仍为 4 个', Pinyin.POOL_ORDER.length === 4, Pinyin.POOL_ORDER.join(','));
 
 const pyCourses = COURSES.filter((c) => c.kind === 'pinyin');
 ok('8 个拼音课程', pyCourses.length === 8, 'n=' + pyCourses.length);
