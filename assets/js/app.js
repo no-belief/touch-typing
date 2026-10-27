@@ -9,9 +9,13 @@
     courseId: COURSES[0].id,
     engine: null,
     spans: [],
+    hintSpans: [],
     current: null,
     timer: null,
     view: 'practice',
+    built: null,
+    mode: 'letter',
+    composing: false,
     suppressInputUntil: 0
   };
   var el = {};
@@ -24,6 +28,8 @@
     el.lessonHint = $('lesson-hint');
     el.targetText = $('target-text');
     el.display = $('text-display');
+    el.pyHint = $('py-hint');
+    el.speedLabel = $('hud-speed-label');
     el.zone = $('typing-zone');
     el.buffer = $('typebuffer');
     el.wpm = $('hud-wpm');
@@ -113,11 +119,15 @@
     var c = byId[id] || COURSES[0];
     S.courseId = c.id;
     stopTimer();
-    S.engine = new TT.Engine(c.build());
+    S.built = c.kind === 'pinyin' ? TT.Pinyin.build(c.pool, c.mode) : null;
+    S.mode = S.built ? S.built.mode : 'letter';
+    S.engine = new TT.Engine(S.built ? S.built.target : c.build());
     S.current = null;
     el.lessonName.textContent = c.name;
     el.lessonHint.textContent = c.hint;
-    el.targetText.textContent = '目标 ' + c.target + ' WPM';
+    var unitWord = S.mode === 'hanzi' ? '字/分' : 'WPM';
+    el.speedLabel.textContent = '速度 ' + unitWord;
+    el.targetText.textContent = '目标 ' + c.target + ' ' + unitWord;
     el.zone.classList.remove('is-started');
     hideModal();
     renderText();
@@ -141,7 +151,35 @@
     }
     el.display.textContent = '';
     el.display.appendChild(frag);
+    renderHint();
     setCurrent(0);
+  }
+
+  function renderHint() {
+    S.hintSpans = [];
+    el.pyHint.textContent = '';
+    if (!S.built || S.built.mode !== 'pinyin') {
+      el.pyHint.hidden = true;
+      return;
+    }
+    S.built.words.forEach(function (w) {
+      var sp = document.createElement('span');
+      sp.className = 'py-word';
+      sp.textContent = w.hanzi;
+      S.hintSpans.push({ node: sp, word: w });
+      el.pyHint.appendChild(sp);
+    });
+    el.pyHint.hidden = false;
+  }
+
+  function markHint(index) {
+    if (!S.hintSpans.length) return;
+    for (var i = 0; i < S.hintSpans.length; i++) {
+      var item = S.hintSpans[i];
+      var on = index >= item.word.start && index < item.word.end;
+      item.node.classList.toggle('is-on', on);
+      item.node.classList.toggle('is-done', index >= item.word.end && !on);
+    }
   }
 
   function paintAt(i) {
@@ -158,6 +196,7 @@
   function setCurrent(i) {
     if (S.current) S.current.classList.remove('current');
     S.current = null;
+    markHint(i == null && S.engine ? S.engine.index : i);
     if (i == null) return;
     var sp = S.spans[i];
     if (!sp) return;
@@ -176,7 +215,8 @@
 
   function updateHUD() {
     var m = S.engine.metrics(Date.now());
-    el.wpm.textContent = String(Math.round(m.wpm));
+    var cpm = m.sec > 0 ? m.correct / (m.sec / 60) : 0;
+    el.wpm.textContent = String(Math.round(S.mode === 'hanzi' ? cpm : m.wpm));
     el.acc.textContent = m.acc.toFixed(0) + '%';
     el.time.textContent = m.sec.toFixed(1) + 's';
     el.progress.textContent = Math.round(m.progress * 100) + '%';
@@ -225,7 +265,7 @@
   }
 
   function onKeyDown(e) {
-    if (e.isComposing || e.keyCode === 229) return;
+    if (S.composing || e.isComposing || e.keyCode === 229) return;
     if (S.view !== 'practice') return;
     if (!el.modal.hidden) {
       if (e.key === 'Enter') { e.preventDefault(); hideModal(); startLesson(nextCourseId()); }
@@ -247,6 +287,7 @@
 
   // 移动端软键盘：keydown 常拿不到真实字符，用 input 事件兜底
   function onBufferInput() {
+    if (S.composing) return;
     var v = el.buffer.value;
     el.buffer.value = '';
     if (!v) { if (S.engine) updateHUD(); return; }
@@ -275,6 +316,11 @@
     r.courseId = c.id;
     r.courseName = c.name;
     r.target = c.target;
+    r.unit = c.kind === 'pinyin' && c.mode === 'hanzi' ? 'cpm' : 'wpm';
+    if (r.unit === 'cpm') {
+      r.cpm = r.sec > 0 ? Math.round(r.correct / (r.sec / 60)) : 0;
+      r.wpm = r.cpm;
+    }
     TT.Storage.add(r);
     showResult(r, c);
     renderCourses();
@@ -303,9 +349,10 @@
   function showResult(r, c) {
     el.resultGrid.textContent = '';
     var hit = r.wpm >= c.target;
-    el.modalSub.textContent = c.name + ' · 目标 ' + c.target + ' WPM · ' + (hit ? '已达标' : '还差 ' + (c.target - r.wpm) + ' WPM');
-    el.resultGrid.appendChild(cell('速度 WPM', String(r.wpm), hit ? 'is-good' : ''));
-    el.resultGrid.appendChild(cell('原始速度', String(r.rawWpm)));
+    var unitWord = r.unit === 'cpm' ? '字/分' : 'WPM';
+    el.modalSub.textContent = c.name + ' · 目标 ' + c.target + ' ' + unitWord + ' · ' + (hit ? '已达标' : '还差 ' + (c.target - r.wpm) + ' ' + unitWord);
+    el.resultGrid.appendChild(cell('速度 ' + unitWord, String(r.wpm), hit ? 'is-good' : ''));
+    el.resultGrid.appendChild(cell(r.unit === 'cpm' ? '原始速度(字母)' : '原始速度', String(r.rawWpm)));
     el.resultGrid.appendChild(cell('准确率', r.acc.toFixed(1) + '%', r.acc >= 97 ? 'is-good' : 'is-bad'));
     el.resultGrid.appendChild(cell('用时', r.sec.toFixed(1) + 's'));
     el.resultGrid.appendChild(cell('字符', r.correct + ' / ' + r.chars + ' 正确'));
@@ -364,9 +411,10 @@
     var rows = all.filter(function (r) { return filter === 'all' || r.courseId === filter; });
     TT.Chart.draw(el.canvas, rows.slice(-20));
 
-    el.chartNote.textContent = TT.Storage.available
+    var unitTip = '速度单位：拼音·打汉字为「字/分」，其余课程为 WPM（每 5 个字符计一词）。';
+    el.chartNote.textContent = (TT.Storage.available
       ? '记录保存在本机浏览器（localStorage），不上传服务器。'
-      : '当前浏览器禁用了本地存储，成绩只在本次打开期间有效。';
+      : '当前浏览器禁用了本地存储，成绩只在本次打开期间有效。') + unitTip;
 
     el.runsBody.textContent = '';
     if (!rows.length) {
@@ -486,6 +534,11 @@
     document.addEventListener('keydown', onKeyDown);
     el.buffer.addEventListener('input', onBufferInput);
     el.buffer.addEventListener('keydown', onBufferKeyDown);
+    el.buffer.addEventListener('compositionstart', function () { S.composing = true; });
+    el.buffer.addEventListener('compositionend', function () {
+      S.composing = false;
+      onBufferInput();
+    });
     el.zone.addEventListener('click', focusBuffer);
 
     var rt = null;

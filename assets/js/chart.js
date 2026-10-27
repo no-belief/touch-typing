@@ -90,7 +90,7 @@
     ctx.font = '11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.fillStyle = WPM;
     ctx.textAlign = 'left';
-    ctx.fillText('WPM', padL, 2);
+    ctx.fillText('速度', padL, 2);
     ctx.fillStyle = ACC;
     ctx.textAlign = 'right';
     ctx.fillText('准确率', padL + w, 2);

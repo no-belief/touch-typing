@@ -27,6 +27,7 @@ const ctx = vm.createContext({ window: windowStub, console, Math, Date, JSON });
 
 const FILES = [
   'assets/js/courses.js',
+  'assets/js/pinyin.js',
   'assets/js/keyboard.js',
   'assets/js/engine.js',
   'assets/js/storage.js'
@@ -105,19 +106,25 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
 
 // ---- 5. 每课生成的文本都能被键盘指法图解析到具体按键 ----
 {
-  let unresolved = [];
-  let minLen = 1e9;
+  const unresolved = [];
+  const minLen = {};
   for (const c of COURSES) {
+    const isHanzi = c.kind === 'pinyin' && c.mode === 'hanzi';
     for (let round = 0; round < 25; round++) {
       const text = c.build();
-      if (text.length < minLen) minLen = text.length;
+      if (minLen[c.id] === undefined || text.length < minLen[c.id]) minLen[c.id] = text.length;
+      if (isHanzi) continue;
       for (const ch of text) {
         if (!Keyboard.resolve(ch)) unresolved.push(c.id + ':' + JSON.stringify(ch));
       }
     }
   }
-  eq('所有课程文本的字符都能解析到按键', unresolved.length, 0, unresolved.slice(0, 5).join(' '));
-  ok('每课文本长度 >= 40', minLen >= 40, String(minLen));
+  eq('所有可打字课程的字符都能解析到按键', unresolved.length, 0, unresolved.slice(0, 5).join(' '));
+  const short = COURSES.filter((c) => {
+    const need = c.kind === 'pinyin' && c.mode === 'hanzi' ? 24 : 40;
+    return minLen[c.id] < need;
+  }).map((c) => c.id + '=' + minLen[c.id]);
+  eq('每课文本长度达标（汉字课 >=24 字，其余 >=40 字符）', short.length, 0, short.join(','));
 }
 
 // ---- 6. Shift 对侧规则 ----
@@ -153,7 +160,7 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
 // ---- 8. 静态检查：产物完整、可直接 file:// 打开 ----
 {
   const html = read('index.html');
-  const order = ['courses', 'keyboard', 'engine', 'storage', 'chart', 'app'];
+  const order = ['courses', 'pinyin', 'keyboard', 'engine', 'storage', 'chart', 'app'];
   let last = -1;
   for (const name of order) {
     const at = html.indexOf('assets/js/' + name + '.js');
@@ -208,6 +215,74 @@ ok('课程数量 >= 10', COURSES.length >= 10, String(COURSES.length));
     '.modal[hidden]'
   ];
   for (const sel of states) ok('样式含状态选择器 ' + sel, css.includes(sel));
+}
+
+// ---- 10. 拼音练习：词池数据与词边界 ----
+{
+  const P = TT.Pinyin;
+  ok('拼音模块已注册', !!(P && P.POOLS && typeof P.build === 'function'));
+
+  const ids = Object.keys(P.POOLS);
+  eq('四个词池', ids.length, 4, ids.join(','));
+
+  const CJK = /^[\u4e00-\u9fa5]+$/;
+  const PY = /^[a-z]+$/;
+  const bad = [];
+  for (const id of ids) {
+    const items = P.POOLS[id].items;
+    ok('词池 ' + id + ' 至少 16 词', items.length >= 16, String(items.length));
+    for (const [hz, py] of items) {
+      if (!CJK.test(hz)) bad.push(id + ' 汉字非法:' + hz);
+      if (!PY.test(py)) bad.push(id + ' 拼音非法:' + py);
+      const syl = py.match(/[aeiou]+/g) || [];
+      if (hz.length !== syl.length) bad.push(id + ' 字数≠音节数:' + hz + '/' + py);
+    }
+  }
+  eq('词池数据自洽（汉字/拼音/音节数）', bad.length, 0, bad.slice(0, 4).join(' | '));
+
+  const pyCourses = COURSES.filter((c) => c.kind === 'pinyin');
+  eq('注册 8 个拼音课程（4 池 x 2 模式）', pyCourses.length, 8, String(pyCourses.length));
+
+  const cbad = new Set();
+  for (const c of pyCourses) {
+    for (let round = 0; round < 10; round++) {
+      const built = P.build(c.pool, c.mode);
+      for (const w of built.words) {
+        const slice = built.target.slice(w.start, w.end);
+        const want = built.mode === 'pinyin' ? w.pinyin : w.hanzi;
+        if (slice !== want) cbad.add(c.id + ' 词边界错 ' + slice + '≠' + want);
+      }
+      if (built.mode === 'hanzi' && built.target.indexOf(' ') !== -1) cbad.add(c.id + ' 汉字串含空格');
+      if (built.mode === 'pinyin' && !/^[a-z ]+$/.test(built.target)) cbad.add(c.id + ' 拼音串含非字母');
+      if (built.words.length < 16) cbad.add(c.id + ' 词数不足');
+    }
+  }
+  eq('拼音课程 build 与词边界自洽', cbad.size, 0, [...cbad].slice(0, 4).join(' | '));
+
+  const built = P.build('pq', 'pinyin');
+  ok('拼音模式词间有空格', built.target.indexOf(' ') > 0);
+  ok('每个词都带汉字提示', built.words.every((w) => /^[\u4e00-\u9fa5]+$/.test(w.hanzi)));
+}
+
+// ---- 11. 拼音课程可被逐字符敲对（目标串自洽） ----
+{
+  const bad = [];
+  for (const c of COURSES.filter((x) => x.kind === 'pinyin')) {
+    const built = TT.Pinyin.build(c.pool, c.mode);
+    const e = new Engine(built.target);
+    for (const ch of built.target) e.push(ch);
+    const r = e.result();
+    if (!e.finished) bad.push(c.id + ' 未完成');
+    if (r.acc !== 100) bad.push(c.id + ' 准确率≠100');
+    if (r.correct !== built.target.length) bad.push(c.id + ' 正确数≠目标长度');
+    if (r.wrong !== 0) bad.push(c.id + ' 存在错误');
+  }
+  eq('8 个拼音课程都能逐字符敲对', bad.length, 0, bad.slice(0, 4).join(' | '));
+
+  // 拼音模式下每个词的起始字符就是该词拼音首字母
+  const p = TT.Pinyin.build('cy', 'pinyin');
+  ok('拼音词边界首字符正确', p.words.every((w) => p.target.charAt(w.start) === w.pinyin.charAt(0)));
+  ok('拼音词边界末字符正确', p.words.every((w) => p.target.charAt(w.end - 1) === w.pinyin.charAt(w.pinyin.length - 1)));
 }
 
 console.log('');

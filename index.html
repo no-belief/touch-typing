@@ -31,7 +31,7 @@
 
       <div class="stage">
         <div class="hud" aria-label="实时数据">
-          <div class="hud-cell"><span>速度 WPM</span><b id="hud-wpm">0</b></div>
+          <div class="hud-cell"><span id="hud-speed-label">速度 WPM</span><b id="hud-wpm">0</b></div>
           <div class="hud-cell"><span>准确率</span><b id="hud-acc">100%</b></div>
           <div class="hud-cell"><span>用时</span><b id="hud-time">0.0s</b></div>
           <div class="hud-cell"><span>进度</span><b id="hud-progress">0%</b></div>
@@ -43,6 +43,7 @@
             <span class="lesson-name" id="lesson-name">-</span>
             <span class="lesson-hint" id="lesson-hint">-</span>
           </div>
+          <div class="py-hint" id="py-hint" hidden></div>
           <div class="text-display" id="text-display" aria-label="练习文本"></div>
           <p class="focus-hint" id="focus-hint">点击此处或直接开始敲键盘</p>
           <textarea class="typebuffer" id="typebuffer" aria-label="输入缓冲区" autocomplete="off"
@@ -123,6 +124,7 @@
 </div>
 
 <script src="assets/js/courses.js"></script>
+<script src="assets/js/pinyin.js"></script>
 <script src="assets/js/keyboard.js"></script>
 <script src="assets/js/engine.js"></script>
 <script src="assets/js/storage.js"></script>
